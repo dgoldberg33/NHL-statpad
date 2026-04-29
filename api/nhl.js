@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   const { url } = req.query;
   if (!url) { res.status(400).json({ error: "Missing url param" }); return; }
 
-  const fullUrl = "https://api.nhle.com/stats/rest/en" + decodeURIComponent(url);
+  const fullUrl = "https://api.nhle.com/stats/rest/en" + url;
 
   try {
     const r = await fetch(fullUrl, {
