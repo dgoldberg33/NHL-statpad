@@ -24,7 +24,9 @@ body { background: #111; color: #fff; font-family: system-ui, sans-serif; }
 .cell:last-child { border-right: none; }
 .team-cell { background: #191919; flex-direction: column; }
 .logos { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 82px; }
-.logo-dot { width: 27px; height: 27px; border-radius: 50%; font-size: 7.5px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.logo-dot { width: 32px; height: 32px; border-radius: 50%; background: #222; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+.logo-dot img { width: 28px; height: 28px; object-fit: contain; }
+.logo-dot-fallback { width: 32px; height: 32px; border-radius: 50%; font-size: 7px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .year-cell { flex-direction: column; text-align: center; }
 .yr { font-size: 13px; font-weight: 700; color: #ddd; line-height: 1.3; }
 .extra-cell { flex-direction: column; text-align: center; gap: 2px; padding: 6px 4px; }
@@ -102,6 +104,22 @@ body { background: #111; color: #fff; font-family: system-ui, sans-serif; }
 
 // ─── Team colours ──────────────────────────────────────────────────────────────
 const TC = {EDM:"#FF4C00",TOR:"#003E7E",MTL:"#AF1E2D",BOS:"#FFB81C",PIT:"#FCB514",WSH:"#C8102E",COL:"#6F263D",TB:"#002868",DET:"#CE1126",NYR:"#0038A8",CAR:"#CC0000",STL:"#002F87",CGY:"#C8102E",VAN:"#00843D",CHI:"#CF0A2C",DAL:"#006847",MIN:"#154734",PHI:"#F74902",NJ:"#CE1126",BUF:"#003087",NYI:"#003087",OTT:"#E4173E",WPG:"#041E42",NSH:"#FFB81C",FLA:"#041E42",ANA:"#F47A38",LA:"#A2AAAD",SJ:"#006D75",SEA:"#001628",VGK:"#B4975A",UTA:"#6F263D",CBJ:"#002654",PHO:"#8C2633",QUE:"#003DA5",HFD:"#006400",ATL:"#4B3F72",MNS:"#154734",HAR:"#006400"};
+
+// Country flag emojis
+const FLAGS = {
+  CAN:"🇨🇦",USA:"🇺🇸",RUS:"🇷🇺",SWE:"🇸🇪",FIN:"🇫🇮",CZE:"🇨🇿",SVK:"🇸🇰",
+  GER:"🇩🇪",SUI:"🇨🇭",DEN:"🇩🇰",SVN:"🇸🇮",UKR:"🇺🇦",LAT:"🇱🇻",NOR:"🇳🇴",
+  AUT:"🇦🇹",FRA:"🇫🇷",BEL:"🇧🇪",GBR:"🇬🇧",AUS:"🇦🇺",JPN:"🇯🇵",
+};
+
+// NHL API team abbreviation → NHL assets abbreviation (for logo URLs)
+const LOGO_ABV = {
+  NJ:"NJD",LA:"LAK",SJ:"SJS",TB:"TBL",PHO:"ARI",
+  MNS:"MIN",ATL:"ATL",HFD:"HFD",QUE:"QUE",HAR:"HFD",
+};
+function logoAbv(t) { return LOGO_ABV[t] || t; }
+function teamLogoUrl(t) { return `https://assets.nhle.com/logos/nhl/svg/${logoAbv(t)}_light.svg`; }
+function playerPhotoUrl(id) { return id ? `https://assets.nhle.com/mugs/${id}.png` : null; }
 
 function normTeam(t) { const m={NJD:"NJ",LAK:"LA",SJS:"SJ",TBL:"TB",PHX:"PHO"}; return (m[t]||t||"").trim(); }
 function parseTeams(s) { return (s||"").split(",").map(x=>normTeam(x.trim())).filter(Boolean); }
@@ -205,6 +223,21 @@ function playerWonCup(p) {
   return false;
 }
 
+// Known nationality corrections — NHL API sometimes has wrong data
+const NAT_CORRECTIONS = {
+  "Patrick Roy":"CAN","Martin Brodeur":"CAN","Guy Lafleur":"CAN",
+  "Ken Dryden":"CAN","Yvan Cournoyer":"CAN","Jean Beliveau":"CAN",
+  "Maurice Richard":"CAN","Bernie Parent":"CAN","Marcel Dionne":"CAN",
+  "Mike Bossy":"CAN","Bryan Trottier":"CAN","Denis Potvin":"CAN",
+  "Bill Barber":"CAN","Bob Gainey":"CAN","Larry Robinson":"CAN",
+  "Ken Dryden":"CAN","Serge Savard":"CAN","Jacques Lemaire":"CAN",
+  "Darryl Sittler":"CAN","Lanny McDonald":"CAN","Gilbert Perreault":"CAN",
+};
+
+function getPlayerNat(p) {
+  return NAT_CORRECTIONS[p.n] || p.nat || "";
+}
+
 function checkConstraint(p,ex) {
   if (!ex) return {ok:true};
   if (ex.type==="POSITION") {
@@ -214,8 +247,13 @@ function checkConstraint(p,ex) {
   }
   if (ex.type==="WON_CUP" && !playerWonCup(p))
     return {ok:false,msg:`${p.n} has never won the Stanley Cup`};
-  if (ex.type==="NATIONALITY" && p.nat!==ex.val)
-    return {ok:false,msg:`${p.n} is not ${ex.label}`};
+  if (ex.type==="NATIONALITY") {
+    const nat = getPlayerNat(p);
+    // Handle both 2-letter (CA) and 3-letter (CAN) codes from the API
+    const nat3 = nat.length===2 ? {CA:"CAN",US:"USA",RU:"RUS",SE:"SWE",FI:"FIN",CZ:"CZE",SK:"SVK",DE:"GER",CH:"SUI",DK:"DEN"}[nat]||nat : nat;
+    if (nat3 !== ex.val)
+      return {ok:false,msg:`${p.n} is not ${ex.label}`};
+  }
   return {ok:true};
 }
 
@@ -365,12 +403,16 @@ function render() {
     const yrLines = row.f===row.t ? [row.f] : [row.f,"to",row.t];
     html += `<div class="row">
       <div class="cell team-cell"><div class="logos">
-        ${dtm.map(t=>`<div class="logo-dot" style="background:${TC[t]||"#444"}">${t}</div>`).join("")}
+        ${dtm.map(t=>`<div class="logo-dot"><img src="${teamLogoUrl(t)}" alt="${t}" onerror="this.parentNode.outerHTML='<div class=\"logo-dot-fallback\" style=\"background:${TC[t]||"#444"}\">${t}</div>'"></div>`).join("")}
       </div></div>
       <div class="cell year-cell">${yrLines.map(l=>`<div class="yr">${l}</div>`).join("")}</div>
-      <div class="cell extra-cell">${row.ex?`<div class="ex-type">${row.ex.type.replace("_"," ")}</div><div class="ex-val">${row.ex.label}</div><div class="ex-scope">CAREER</div>`:""}</div>
+      <div class="cell extra-cell">${row.ex?`<div class="ex-type">${row.ex.type.replace("_"," ")}</div><div class="ex-val">${row.ex.type==="NATIONALITY"?(FLAGS[row.ex.val]||"")+" "+row.ex.label:row.ex.label}</div><div class="ex-scope">CAREER</div>`:""}</div>
       ${ans
-        ? `<div class="cell add-cell locked" onclick="openRow(${ri})"><div class="add-name">${ans.name}</div><div class="add-score">${ans.display}</div></div>`
+        ? `<div class="cell add-cell locked" onclick="openRow(${ri})" style="position:relative;overflow:hidden">
+  ${ans.id?`<img src="${playerPhotoUrl(ans.id)}" style="position:absolute;bottom:0;right:0;height:100%;width:auto;opacity:.25;object-fit:cover" onerror="this.remove()">`:""}
+  <div class="add-name" style="position:relative;z-index:1">${ans.name}</div>
+  <div class="add-score" style="position:relative;z-index:1">${ans.display}</div>
+</div>`
         : `<div class="cell add-cell" onclick="openRow(${ri})"><div class="add-plus">+</div><div class="add-txt">add player</div></div>`
       }
     </div>`;
@@ -469,7 +511,7 @@ function buildResultsModal() {
     h+=`<table class="lb-table"><tbody>`;
     top.forEach((p,i)=>{
       const mine=ans&&p.n===ans.name;
-      h+=`<tr class="${mine?"mine":""}"><td>#${i+1}</td><td><div class="lb-name">${p.n}</div><div class="lb-yr">${p.f}–${p.t}</div></td><td>${dispScore(p)}</td></tr>`;
+      h+=`<tr class="${mine?"mine":""}"><td>#${i+1}</td><td style="display:flex;align-items:center;gap:8px">${p.id?`<img src="${playerPhotoUrl(p.id)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;background:#222" onerror="this.remove()">`:""}<div><div class="lb-name">${p.n}</div><div class="lb-yr">${p.f}–${p.t}</div></div></td><td>${dispScore(p)}</td></tr>`;
     });
     if(ans&&!myInTop&&myRank>=0)h+=`<tr><td colspan="3" style="color:#333;font-size:10px;text-align:center;padding:3px">· · ·</td></tr><tr class="mine"><td>#${myRank+1}</td><td><div class="lb-name">${ans.name}</div><div class="lb-yr">your pick</div></td><td>${ans.display}</td></tr>`;
     if(!ans)h+=`<tr><td colspan="3" style="padding:6px;color:#333;font-size:11px">No answer</td></tr>`;
@@ -519,7 +561,7 @@ function submitAnswer(ri) {
     if(err){err.textContent=errMsg;err.classList.add("show");}
     return;
   }
-  answers[ri]={name:selPlayer.n,display:dispScore(selPlayer),raw:rawScore(selPlayer)};
+  answers[ri]={name:selPlayer.n,display:dispScore(selPlayer),raw:rawScore(selPlayer),id:selPlayer.id||null};
   modal=null; search=""; selPlayer=null; errMsg="";
   render();
 }
