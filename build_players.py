@@ -55,98 +55,98 @@ def parse_teams(s):
 
 # ── Fetch from NHL Stats REST API (1987-present) ──────────────────────────────
 
+def fetch_report(endpoint, report, page=100):
+    """Paginate through one NHL stats REST report, return all rows."""
+    rows_all = []
+    start = 0
+    total = None
+    while True:
+        url  = f"{NHL_REST}/{endpoint}/{report}?cayenneExp=gameTypeId=2&limit={page}&start={start}"
+        data = get(url)
+        if not data:
+            break
+        if total is None:
+            total = data.get("total", 0)
+        rows = data.get("data", [])
+        if not rows:
+            break
+        rows_all.extend(rows)
+        start += page
+        if len(rows) < page or start >= total:
+            break
+        time.sleep(0.05)
+    return rows_all
+
 def fetch_nhl_api(is_goalie):
     endpoint = "goalie" if is_goalie else "skater"
     label    = "goalies" if is_goalie else "skaters"
     print(f"\nFetching {label} from NHL Stats API...")
 
     by_id = {}
-    start = 0
-    page  = 100
 
-    total = None
-    while True:
-        url  = f"{NHL_REST}/{endpoint}/summary?cayenneExp=gameTypeId=2&limit={page}&start={start}"
-        data = get(url)
-        if not data:
-            print(f"  Failed at start={start}, stopping")
-            break
+    # Fetch bios first — contains nationality (birthCountryCode) and position
+    print(f"  Fetching bios...")
+    for r in fetch_report(endpoint, "bios"):
+        pid = r.get("playerId")
+        if not pid:
+            continue
+        name = r.get("goalieFullName" if is_goalie else "skaterFullName", "") or r.get("playerName","")
+        nat  = norm_nat(r.get("nationalityCode","") or r.get("birthCountryCode",""))
+        pos  = "G" if is_goalie else (r.get("positionCode","") or "C")
+        if pid not in by_id:
+            by_id[pid] = {"id":pid,"n":name,"tm":[],"f":9999,"t":0,"pos":pos,"nat":nat,
+                          "pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":0,"sv":0,"gaa":0,"so":0}
+        else:
+            p = by_id[pid]
+            if name and not p["n"]: p["n"] = name
+            if nat  and not p["nat"]: p["nat"] = nat
+    print(f"  Got bios for {len(by_id)} {label}")
 
-        if total is None:
-            total = data.get("total", 99999)
-            print(f"  API reports {total} total {label}")
+    # Now fetch summary — contains per-season stats and team info
+    print(f"  Fetching summary stats...")
+    for r in fetch_report(endpoint, "summary"):
+        pid = r.get("playerId")
+        if not pid:
+            continue
+        name  = r.get("goalieFullName" if is_goalie else "skaterFullName", "")
+        teams = parse_teams(r.get("teamAbbrevs", ""))
+        sid   = str(r.get("seasonId", "19870988"))
+        yr    = int(sid[:4]) if len(sid) >= 4 else 1987
+        pos   = "G" if is_goalie else r.get("positionCode", "C")
+        nat   = norm_nat(r.get("nationalityCode", "") or r.get("birthCountryCode", ""))
+        pts   = r.get("points", 0) or 0
+        g     = r.get("goals", 0) or 0
+        a     = r.get("assists", 0) or 0
+        pim   = r.get("penaltyMinutes", 0) or 0
+        ppg   = r.get("powerPlayGoals", 0) or 0
+        sog   = r.get("shots", 0) or 0
+        w     = r.get("wins", 0) or 0
+        sv    = r.get("savePctg") or r.get("savePct") or 0
+        gaa   = r.get("goalsAgainstAverage", 0) or 0
+        so    = r.get("shutouts", 0) or 0
 
-        rows = data.get("data", [])
-        if not rows:
-            break
-
-        for r in rows:
-            pid  = r.get("playerId")
-            if not pid:
-                continue
-
-            name  = r.get("goalieFullName" if is_goalie else "skaterFullName", "")
-            teams = parse_teams(r.get("teamAbbrevs", ""))
-            sid   = str(r.get("seasonId", "19870988"))
-            yr    = int(sid[:4]) if len(sid) >= 4 else 1987
-            pos   = "G" if is_goalie else r.get("positionCode", "C")
-            nat   = norm_nat(r.get("nationalityCode", ""))
-
-            # Per-season stats
-            pts  = r.get("points", 0) or 0
-            g    = r.get("goals", 0) or 0
-            a    = r.get("assists", 0) or 0
-            pim  = r.get("penaltyMinutes", 0) or 0
-            ppg  = r.get("powerPlayGoals", 0) or 0
-            sog  = r.get("shots", 0) or 0
-            w    = r.get("wins", 0) or 0
-            sv   = r.get("savePctg") or r.get("savePct") or 0
-            gaa  = r.get("goalsAgainstAverage", 0) or 0
-            so   = r.get("shutouts", 0) or 0
-
-            if pid not in by_id:
-                by_id[pid] = {
-                    "id": pid,
-                    "n": name, "tm": list(teams),
-                    "f": yr, "t": yr + 1,
-                    "pos": pos, "nat": nat,
-                    "pts": pts, "g": g, "a": a, "pim": pim,
-                    "ppg": ppg, "sog": sog,
-                    "w": w, "sv": sv, "gaa": gaa, "so": so,
-                }
-            else:
-                p = by_id[pid]
-                # Always update name/nat if current value is blank
-                if name and not p["n"]:
-                    p["n"] = name
-                if nat and not p["nat"]:
-                    p["nat"] = nat
-                # Merge all teams across all seasons
-                for t in teams:
-                    if t and t not in p["tm"]:
-                        p["tm"].append(t)
-                p["f"]   = min(p["f"], yr)
-                p["t"]   = max(p["t"], yr + 1)
-                p["pts"] = max(p["pts"], pts)
-                p["g"]   = max(p["g"],   g)
-                p["a"]   = max(p["a"],   a)
-                p["pim"] = max(p["pim"], pim)
-                p["ppg"] = max(p["ppg"], ppg)
-                p["sog"] = max(p["sog"], sog)
-                p["w"]   = max(p["w"],   w)
-                p["sv"]  = max(p["sv"],  sv)
-                p["so"]  = max(p["so"],  so)
-                if gaa > 0:
-                    p["gaa"] = gaa if p["gaa"] == 0 else min(p["gaa"], gaa)
-
-        count = len(by_id)
-        print(f"  Fetched {count} unique {label} so far (page start={start})")
-        sys.stdout.flush()
-
-        start += page
-        if len(rows) < page or (total and start >= total):
-            break
-        time.sleep(0.05)
+        if pid not in by_id:
+            by_id[pid] = {"id":pid,"n":name,"tm":list(teams),"f":yr,"t":yr+1,
+                          "pos":pos,"nat":nat,"pts":pts,"g":g,"a":a,"pim":pim,
+                          "ppg":ppg,"sog":sog,"w":w,"sv":sv,"gaa":gaa,"so":so}
+        else:
+            p = by_id[pid]
+            if name and not p["n"]:   p["n"]   = name
+            if nat  and not p["nat"]: p["nat"] = nat
+            for t in teams:
+                if t and t not in p["tm"]: p["tm"].append(t)
+            p["f"]   = min(p["f"], yr)
+            p["t"]   = max(p["t"], yr + 1)
+            p["pts"] = max(p["pts"], pts)
+            p["g"]   = max(p["g"],   g)
+            p["a"]   = max(p["a"],   a)
+            p["pim"] = max(p["pim"], pim)
+            p["ppg"] = max(p["ppg"], ppg)
+            p["sog"] = max(p["sog"], sog)
+            p["w"]   = max(p["w"],   w)
+            p["sv"]  = max(p["sv"],  sv)
+            p["so"]  = max(p["so"],  so)
+            if gaa > 0: p["gaa"] = gaa if p["gaa"] == 0 else min(p["gaa"], gaa)
 
     print(f"  Done: {len(by_id)} unique {label}")
     return list(by_id.values())
