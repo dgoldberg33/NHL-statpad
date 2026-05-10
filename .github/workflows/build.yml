@@ -1,12 +1,14 @@
 name: Build Players
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install requests
@@ -15,5 +17,5 @@ jobs:
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
           git add players.json
-          git commit -m "Update players.json"
+          git commit -m "Update players.json" || echo "No changes"
           git push
