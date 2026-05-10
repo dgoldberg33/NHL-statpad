@@ -241,30 +241,29 @@ def main():
     for p in PRE_1987:
         name_key = p["n"].lower()
         if name_key in api_by_name:
-            # Player exists in API — extend year range, merge teams, take best stats
+            # Merge — our curated stats override bad API data for these legends
             ep = api_by_name[name_key]
-            ep["f"] = min(ep["f"], p["f"])
-            ep["t"] = max(ep["t"], p["t"])
+            ep["f"]   = min(ep["f"], p["f"])
+            ep["t"]   = max(ep["t"], p["t"])
+            ep["nat"] = p["nat"] or ep.get("nat", "")  # use our nat, API is often wrong
             for t in p["tm"]:
                 if t and t not in ep["tm"]:
                     ep["tm"].append(t)
-            # Always use pre-1987 stats if they're better
-            # (API stats for pre-1987 players are often wrong/incomplete)
             for stat in ["pts","g","a","pim","ppg","sog","w","so"]:
                 ep[stat] = max(ep[stat], p[stat])
             if p["sv"] > 0:
                 ep["sv"] = max(ep["sv"], p["sv"])
             if p["gaa"] > 0:
                 ep["gaa"] = p["gaa"] if ep["gaa"] == 0 else min(ep["gaa"], p["gaa"])
-            # Fix nationality if API has it blank
-            if not ep.get("nat") and p.get("nat"):
-                ep["nat"] = p["nat"]
             updated += 1
         else:
-            # Not in API at all — add directly
-            api_players.append(dict(p))
+            # Force add — these players must be in the database
+            new_p = dict(p)
+            new_p.setdefault("id", None)
+            api_players.append(new_p)
             api_by_name[name_key] = api_players[-1]
             added += 1
+            print(f"  Force-added: {p['n']}")
 
     print(f"Added {added} new pre-1987 players, updated {updated} existing")
     print(f"Total: {len(api_players)} players")
