@@ -22,10 +22,10 @@ body { background: #111; color: #fff; font-family: system-ui, sans-serif; }
 .row { display: grid; grid-template-columns: 90px 72px 1fr 102px; background: #1e1e1e; border-radius: 7px; overflow: hidden; min-height: 80px; }
 .cell { display: flex; align-items: center; justify-content: center; padding: 8px 6px; border-right: 1px solid #252525; }
 .cell:last-child { border-right: none; }
-.team-cell { background: #191919; flex-direction: column; }
-.logos { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 82px; }
-.logo-dot { width: 30px; height: 30px; border-radius: 50%; background: #1a1a1a; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; margin: 1px; }
-.logo-dot img { width: 26px; height: 26px; object-fit: contain; display: block; }
+.team-cell { background: #191919; }
+.logos { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 3px; padding: 4px; width: 100%; }
+.logo-dot { border-radius: 50%; background: #111; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; padding: 2px; }
+.logo-dot img { object-fit: contain; display: block; }
 .year-cell { flex-direction: column; text-align: center; }
 .yr { font-size: 13px; font-weight: 700; color: #ddd; line-height: 1.3; }
 .extra-cell { flex-direction: column; text-align: center; gap: 2px; padding: 6px 4px; }
@@ -117,16 +117,28 @@ const LOGO_ABV = {
   MNS:"MIN",ATL:"ATL",HFD:"HFD",QUE:"QUE",HAR:"HFD",
 };
 function logoAbv(t) { return LOGO_ABV[t] || t; }
-function teamLogoHTML(t) {
-  const color = TC[t]||"#444";
-  return `<div class="logo-dot" style="background:#1a1a1a">` +
-    `<img src="${teamLogoUrl(t)}" alt="${t}" width="28" height="28" ` +
-    `style="object-fit:contain" ` +
-    `onerror="this.outerHTML='<span style=\'font-size:7px;font-weight:800;color:#fff\'>${t}</span>'"` +
+function teamLogoHTML(t, size) {
+  const s = size || 36;
+  const img = Math.round(s * 0.85);
+  return `<div class="logo-dot" style="width:${s}px;height:${s}px">` +
+    `<img src="${teamLogoUrl(t)}" alt="${t}" width="${img}" height="${img}" ` +
+    `onerror="this.parentNode.innerHTML='<span style=\'font-size:${Math.max(6,s/5)|0}px;font-weight:800;color:#fff\'>${t}</span>'"` +
     `></div>`;
 }
 function teamLogoUrl(t) { return `https://assets.nhle.com/logos/nhl/svg/${logoAbv(t)}_light.svg`; }
-function playerPhotoUrl(id) { return id ? `https://assets.nhle.com/mugs/${id}.png` : null; }
+function playerPhotoUrl(id) {
+  if (!id) return null;
+  // NHL headshots are at this URL — some players may not have one
+  return `https://assets.nhle.com/mugs/${id}.png`;
+}
+function playerPhotoHTML(id, size) {
+  if (!id) return "";
+  const s = size || 40;
+  return `<img src="https://assets.nhle.com/mugs/${id}.png" ` +
+    `width="${s}" height="${s}" ` +
+    `style="border-radius:50%;object-fit:cover;object-position:top;background:#222" ` +
+    `onerror="this.style.display='none'">`;
+}
 
 function normTeam(t) { const m={NJD:"NJ",LAK:"LA",SJS:"SJ",TBL:"TB",PHX:"PHO"}; return (m[t]||t||"").trim(); }
 function parseTeams(s) { return (s||"").split(",").map(x=>normTeam(x.trim())).filter(Boolean); }
@@ -230,19 +242,13 @@ function playerWonCup(p) {
   return false;
 }
 
-// Known nationality corrections — NHL API sometimes has wrong data
-const NAT_CORRECTIONS = {
-  "Patrick Roy":"CAN","Martin Brodeur":"CAN","Guy Lafleur":"CAN",
-  "Ken Dryden":"CAN","Yvan Cournoyer":"CAN","Jean Beliveau":"CAN",
-  "Maurice Richard":"CAN","Bernie Parent":"CAN","Marcel Dionne":"CAN",
-  "Mike Bossy":"CAN","Bryan Trottier":"CAN","Denis Potvin":"CAN",
-  "Bill Barber":"CAN","Bob Gainey":"CAN","Larry Robinson":"CAN",
-  "Ken Dryden":"CAN","Serge Savard":"CAN","Jacques Lemaire":"CAN",
-  "Darryl Sittler":"CAN","Lanny McDonald":"CAN","Gilbert Perreault":"CAN",
-};
-
+// Normalize nationality codes — API returns inconsistent formats
 function getPlayerNat(p) {
-  return NAT_CORRECTIONS[p.n] || p.nat || "";
+  const nat = p.nat || "";
+  // Map 2-letter to 3-letter
+  const map2 = {CA:"CAN",US:"USA",RU:"RUS",SE:"SWE",FI:"FIN",CZ:"CZE",
+    SK:"SVK",DE:"GER",CH:"SUI",DK:"DEN",SI:"SVN",UA:"UKR",LV:"LAT"};
+  return map2[nat] || nat;
 }
 
 function checkConstraint(p,ex) {
@@ -410,15 +416,15 @@ function render() {
     const yrLines = row.f===row.t ? [row.f] : [row.f,"to",row.t];
     html += `<div class="row">
       <div class="cell team-cell"><div class="logos">
-        ${dtm.map(t=>teamLogoHTML(t)).join("")}
+        ${(()=>{ const s=dtm.length===1?52:dtm.length===2?38:dtm.length<=4?28:22; return dtm.map(t=>teamLogoHTML(t,s)).join(""); })()}
       </div></div>
       <div class="cell year-cell">${yrLines.map(l=>`<div class="yr">${l}</div>`).join("")}</div>
       <div class="cell extra-cell">${row.ex?`<div class="ex-type">${row.ex.type.replace("_"," ")}</div><div class="ex-val">${row.ex.type==="NATIONALITY"?(FLAGS[row.ex.val]||"")+" "+row.ex.label:row.ex.label}</div><div class="ex-scope">CAREER</div>`:""}</div>
       ${ans
-        ? `<div class="cell add-cell locked" onclick="openRow(${ri})" style="position:relative;overflow:hidden">
-  ${ans.id?`<img src="${playerPhotoUrl(ans.id)}" style="position:absolute;bottom:0;right:0;height:100%;width:auto;opacity:.25;object-fit:cover" onerror="this.remove()">`:""}
-  <div class="add-name" style="position:relative;z-index:1">${ans.name}</div>
-  <div class="add-score" style="position:relative;z-index:1">${ans.display}</div>
+        ? `<div class="cell add-cell locked" onclick="openRow(${ri})" style="flex-direction:column;gap:2px;overflow:hidden;position:relative">
+  ${ans.id ? `<img src="https://assets.nhle.com/mugs/${ans.id}.png" style="position:absolute;right:-4px;bottom:0;height:110%;width:auto;opacity:0.2;object-fit:cover;object-position:top" onerror="this.remove()">` : ""}
+  <div style="font-size:10px;font-weight:700;color:#fff;text-align:center;padding:0 4px;line-height:1.2;word-break:break-word;position:relative;z-index:1">${ans.name}</div>
+  <div style="font-size:15px;font-weight:800;color:#fff;position:relative;z-index:1">${ans.display}</div>
 </div>`
         : `<div class="cell add-cell" onclick="openRow(${ri})"><div class="add-plus">+</div><div class="add-txt">add player</div></div>`
       }
