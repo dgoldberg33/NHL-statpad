@@ -42,6 +42,14 @@ def norm_team(t):
     m = {"NJD":"NJ","LAK":"LA","SJS":"SJ","TBL":"TB","PHX":"PHO","ATL":"ATL","MNS":"MIN"}
     return m.get(t, t) if t else ""
 
+def norm_nat(n):
+    # Some API responses return 2-letter ISO codes instead of 3-letter
+    m = {"CA":"CAN","US":"USA","RU":"RUS","SE":"SWE","FI":"FIN",
+         "CZ":"CZE","SK":"SVK","DE":"GER","CH":"SUI","DK":"DEN",
+         "AT":"AUT","BE":"BEL","FR":"FRA","GB":"GBR","LV":"LAT",
+         "NO":"NOR","SI":"SVN","UA":"UKR"}
+    return m.get(n, n) if n else ""
+
 def parse_teams(s):
     return [norm_team(t.strip()) for t in (s or "").split(",") if t.strip()]
 
@@ -77,7 +85,7 @@ def fetch_nhl_api(is_goalie):
             sid   = str(r.get("seasonId", "19870988"))
             yr    = int(sid[:4]) if len(sid) >= 4 else 1987
             pos   = "G" if is_goalie else r.get("positionCode", "C")
-            nat   = r.get("nationalityCode", "")
+            nat   = norm_nat(r.get("nationalityCode", ""))
 
             # Per-season stats
             pts  = r.get("points", 0) or 0
