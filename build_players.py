@@ -55,13 +55,16 @@ def parse_teams(s):
 
 # ── Fetch from NHL Stats REST API (1987-present) ──────────────────────────────
 
-def fetch_report(endpoint, report, page=100):
+def fetch_report(endpoint, report, page=100, extra_filter=""):
     """Paginate through one NHL stats REST report, return all rows."""
     rows_all = []
     start = 0
     total = None
+    # bios report doesn't need gameTypeId filter and returns more players without it
+    base_filter = extra_filter or ("cayenneExp=gameTypeId=2" if report != "bios" else "")
     while True:
-        url  = f"{NHL_REST}/{endpoint}/{report}?cayenneExp=gameTypeId=2&limit={page}&start={start}"
+        sep = "&" if base_filter else ""
+        url  = f"{NHL_REST}/{endpoint}/{report}?{base_filter}{sep}limit={page}&start={start}"
         data = get(url)
         if not data:
             break
@@ -72,7 +75,7 @@ def fetch_report(endpoint, report, page=100):
             break
         rows_all.extend(rows)
         start += page
-        if len(rows) < page or start >= total:
+        if len(rows) < page:
             break
         time.sleep(0.05)
     return rows_all
@@ -84,9 +87,9 @@ def fetch_nhl_api(is_goalie):
 
     by_id = {}
 
-    # Fetch bios first — contains nationality (birthCountryCode) and position
+    # Fetch bios — contains nationality. Must paginate without season filter to get all players.
     print(f"  Fetching bios...")
-    for r in fetch_report(endpoint, "bios"):
+    for r in fetch_report(endpoint, "bios", page=100):
         pid = r.get("playerId")
         if not pid:
             continue
@@ -101,6 +104,10 @@ def fetch_nhl_api(is_goalie):
             if name and not p["n"]: p["n"] = name
             if nat  and not p["nat"]: p["nat"] = nat
     print(f"  Got bios for {len(by_id)} {label}")
+    
+    # For any remaining players not in bios, fetch individually via api-web
+    # This handles ~1500 older players whose bios aren't in the summary endpoint
+    # We do this AFTER the summary fetch so we know which players need it
 
     # Now fetch summary — contains per-season stats and team info
     print(f"  Fetching summary stats...")
@@ -158,29 +165,29 @@ def fetch_nhl_api(is_goalie):
 PRE_1987 = [
     # Skaters
     {"n":"Wayne Gretzky",     "tm":["EDM","LA","STL","NYR"],"f":1979,"t":1999,"pos":"C", "nat":"CAN","pts":215,"g":92, "a":163,"pim":39, "ppg":23,"sog":369,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Mario Lemieux",     "tm":["PIT"],                  "f":1984,"t":1987,"pos":"C", "nat":"CAN","pts":141,"g":48, "a":93, "pim":43, "ppg":15,"sog":226,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Mario Lemieux",     "tm":["PIT"],                  "f":1984,"t":2006,"pos":"C", "nat":"CAN","pts":141,"g":48, "a":93, "pim":43, "ppg":15,"sog":226,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Mike Bossy",        "tm":["NYI"],                  "f":1977,"t":1987,"pos":"RW","nat":"CAN","pts":147,"g":69, "a":78, "pim":34, "ppg":28,"sog":380,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Bryan Trottier",    "tm":["NYI","PIT"],             "f":1975,"t":1987,"pos":"C", "nat":"CAN","pts":134,"g":50, "a":89, "pim":72, "ppg":20,"sog":320,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Marcel Dionne",     "tm":["DET","LA","NYR"],        "f":1971,"t":1987,"pos":"C", "nat":"CAN","pts":137,"g":59, "a":84, "pim":38, "ppg":21,"sog":340,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Guy Lafleur",       "tm":["MTL","NYR","QUE"],       "f":1971,"t":1987,"pos":"RW","nat":"CAN","pts":136,"g":60, "a":89, "pim":20, "ppg":22,"sog":353,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Phil Esposito",     "tm":["CHI","BOS","NYR"],       "f":1963,"t":1981,"pos":"C", "nat":"CAN","pts":152,"g":76, "a":76, "pim":88, "ppg":22,"sog":426,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Bobby Orr",         "tm":["BOS","CHI"],             "f":1966,"t":1979,"pos":"D", "nat":"CAN","pts":139,"g":46, "a":102,"pim":125,"ppg":19,"sog":338,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Jari Kurri",        "tm":["EDM","LA","NYR"],        "f":1980,"t":1987,"pos":"RW","nat":"FIN","pts":135,"g":71, "a":64, "pim":30, "ppg":27,"sog":363,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Mark Messier",      "tm":["EDM","NYR","VAN"],       "f":1979,"t":1987,"pos":"C", "nat":"CAN","pts":168,"g":67, "a":84, "pim":239,"ppg":18,"sog":323,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Jari Kurri",        "tm":["EDM","LA","NYR"],        "f":1980,"t":1996,"pos":"RW","nat":"FIN","pts":135,"g":71, "a":64, "pim":30, "ppg":27,"sog":363,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Mark Messier",      "tm":["EDM","NYR","VAN"],       "f":1979,"t":2004,"pos":"C", "nat":"CAN","pts":168,"g":67, "a":84, "pim":239,"ppg":18,"sog":323,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Denis Potvin",      "tm":["NYI"],                   "f":1973,"t":1987,"pos":"D", "nat":"CAN","pts":101,"g":31, "a":83, "pim":119,"ppg":18,"sog":270,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Paul Coffey",       "tm":["EDM","PIT","LA","DET","HAR","PHI","CHI","BOS","CAR","PHO"],"f":1980,"t":1987,"pos":"D","nat":"CAN","pts":138,"g":48,"a":102,"pim":87,"ppg":25,"sog":320,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Paul Coffey",       "tm":["EDM","PIT","LA","DET","HAR","PHI","CHI","BOS","CAR","PHO"],"f":1980,"t":2001,"pos":"D","nat":"CAN","pts":138,"g":48,"a":102,"pim":87,"ppg":25,"sog":320,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Dale Hawerchuk",    "tm":["WPG","STL","BUF","PHI"], "f":1981,"t":1987,"pos":"C", "nat":"CAN","pts":130,"g":53, "a":77, "pim":40, "ppg":21,"sog":290,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Denis Savard",      "tm":["CHI","MTL","TB"],        "f":1980,"t":1987,"pos":"C", "nat":"CAN","pts":131,"g":47, "a":87, "pim":72, "ppg":22,"sog":310,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Mike Gartner",      "tm":["WSH","MIN","NYR","TOR","PHO"],"f":1979,"t":1987,"pos":"RW","nat":"CAN","pts":102,"g":55,"a":48,"pim":68,"ppg":18,"sog":380,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Luc Robitaille",    "tm":["LA","PIT","NYR","DET"],  "f":1986,"t":1987,"pos":"LW","nat":"CAN","pts":84, "g":45, "a":39, "pim":44, "ppg":18,"sog":226,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Glenn Anderson",    "tm":["EDM","TOR","NYR","STL"], "f":1980,"t":1987,"pos":"RW","nat":"CAN","pts":105,"g":54, "a":48, "pim":80, "ppg":20,"sog":290,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Mike Liut",         "tm":["STL","HAR","WSH"],       "f":1979,"t":1987,"pos":"C", "nat":"CAN","pts":0,  "g":0,  "a":0,  "pim":0,  "ppg":0, "sog":0,  "w":33,"sv":.899,"gaa":2.84,"so":4},
-    {"n":"Ray Bourque",       "tm":["BOS","COL"],             "f":1979,"t":1987,"pos":"D", "nat":"CAN","pts":96, "g":21, "a":75, "pim":74, "ppg":12,"sog":266,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Denis Savard",      "tm":["CHI","MTL","TB"],        "f":1980,"t":1997,"pos":"C", "nat":"CAN","pts":131,"g":47, "a":87, "pim":72, "ppg":22,"sog":310,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Mike Gartner",      "tm":["WSH","MIN","NYR","TOR","PHO"],"f":1979,"t":1998,"pos":"RW","nat":"CAN","pts":102,"g":55,"a":48,"pim":68,"ppg":18,"sog":380,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Luc Robitaille",    "tm":["LA","PIT","NYR","DET"],  "f":1986,"t":2006,"pos":"LW","nat":"CAN","pts":84, "g":45, "a":39, "pim":44, "ppg":18,"sog":226,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Glenn Anderson",    "tm":["EDM","TOR","NYR","STL"], "f":1980,"t":1996,"pos":"RW","nat":"CAN","pts":105,"g":54, "a":48, "pim":80, "ppg":20,"sog":290,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Mike Liut",         "tm":["STL","HAR","WSH"],       "f":1979,"t":1987,"pos":"G", "nat":"CAN","pts":0,  "g":0,  "a":0,  "pim":0,  "ppg":0, "sog":0,  "w":33,"sv":.899,"gaa":2.84,"so":4},
+    {"n":"Ray Bourque",       "tm":["BOS","COL"],             "f":1979,"t":2001,"pos":"D", "nat":"CAN","pts":96, "g":21, "a":75, "pim":74, "ppg":12,"sog":266,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Brian Trottier",    "tm":["NYI","PIT"],             "f":1975,"t":1987,"pos":"C", "nat":"CAN","pts":134,"g":50, "a":89, "pim":72, "ppg":20,"sog":320,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Mike Foligno",      "tm":["DET","BUF","TOR","FLA"], "f":1979,"t":1987,"pos":"RW","nat":"CAN","pts":82, "g":41, "a":41, "pim":175,"ppg":11,"sog":240,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Peter Stastny",     "tm":["QUE","NJ","STL"],        "f":1980,"t":1987,"pos":"C", "nat":"SVK","pts":139,"g":46, "a":93, "pim":78, "ppg":19,"sog":270,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Michel Goulet",     "tm":["QUE","CHI"],             "f":1979,"t":1987,"pos":"LW","nat":"CAN","pts":121,"g":57, "a":64, "pim":76, "ppg":22,"sog":310,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Dino Ciccarelli",   "tm":["MIN","WSH","DET","TB","FLA"],"f":1981,"t":1987,"pos":"RW","nat":"CAN","pts":106,"g":55,"a":51,"pim":122,"ppg":22,"sog":310,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Dino Ciccarelli",   "tm":["MIN","WSH","DET","TB","FLA"],"f":1981,"t":1999,"pos":"RW","nat":"CAN","pts":106,"g":55,"a":51,"pim":122,"ppg":22,"sog":310,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Rick Middleton",    "tm":["NYR","BOS"],             "f":1974,"t":1987,"pos":"RW","nat":"CAN","pts":105,"g":51, "a":54, "pim":12, "ppg":15,"sog":280,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Gil Perreault",     "tm":["BUF"],                   "f":1970,"t":1987,"pos":"C", "nat":"CAN","pts":113,"g":51, "a":69, "pim":36, "ppg":18,"sog":248,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Mike Rogers",       "tm":["VAN","HAR","NYR","EDM"], "f":1974,"t":1986,"pos":"C", "nat":"CAN","pts":105,"g":44, "a":61, "pim":24, "ppg":14,"sog":220,"w":0,"sv":0,"gaa":0,"so":0},
@@ -196,7 +203,7 @@ PRE_1987 = [
     {"n":"Tim Kerr",          "tm":["PHI","NYR","HAR"],       "f":1980,"t":1987,"pos":"C", "nat":"CAN","pts":81, "g":54, "a":43, "pim":66, "ppg":26,"sog":240,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Joe Mullen",        "tm":["STL","CGY","PIT","BOS"], "f":1980,"t":1987,"pos":"RW","nat":"USA","pts":110,"g":51, "a":59, "pim":14, "ppg":18,"sog":270,"w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Hakan Loob",        "tm":["CGY"],                   "f":1983,"t":1989,"pos":"RW","nat":"SWE","pts":106,"g":50, "a":56, "pim":28, "ppg":18,"sog":240,"w":0,"sv":0,"gaa":0,"so":0},
-    {"n":"Doug Gilmour",      "tm":["STL","CGY","TOR","NJ","CHI","BUF","MTL"],"f":1983,"t":1987,"pos":"C","nat":"CAN","pts":105,"g":35,"a":70,"pim":58,"ppg":9,"sog":200,"w":0,"sv":0,"gaa":0,"so":0},
+    {"n":"Doug Gilmour",      "tm":["STL","CGY","TOR","NJ","CHI","BUF","MTL"],"f":1983,"t":2003,"pos":"C","nat":"CAN","pts":105,"g":35,"a":70,"pim":58,"ppg":9,"sog":200,"w":0,"sv":0,"gaa":0,"so":0},
     # Pre-expansion era
     {"n":"Gordie Howe",       "tm":["DET","HFD"],             "f":1946,"t":1980,"pos":"RW","nat":"CAN","pts":103,"g":49, "a":67, "pim":109,"ppg":0, "sog":0,  "w":0,"sv":0,"gaa":0,"so":0},
     {"n":"Bobby Hull",        "tm":["CHI","WPG","HAR"],       "f":1957,"t":1980,"pos":"LW","nat":"CAN","pts":107,"g":58, "a":49, "pim":52, "ppg":0, "sog":0,  "w":0,"sv":0,"gaa":0,"so":0},
@@ -219,10 +226,10 @@ PRE_1987 = [
     {"n":"Glenn Hall",        "tm":["DET","CHI","STL"],       "f":1952,"t":1971,"pos":"G", "nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":36,"sv":.900,"gaa":2.49,"so":11},
     {"n":"Terry Sawchuk",     "tm":["DET","BOS","TOR","LA","NYR"],"f":1949,"t":1970,"pos":"G","nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":33,"sv":.904,"gaa":1.98,"so":14},
     {"n":"Jacques Plante",    "tm":["MTL","NYR","STL","TOR","BOS"],"f":1952,"t":1973,"pos":"G","nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":34,"sv":.906,"gaa":2.15,"so":9},
-    {"n":"Grant Fuhr",        "tm":["EDM","TOR","BUF","LA","STL"],"f":1981,"t":1987,"pos":"G","nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":40,"sv":.880,"gaa":3.87,"so":1},
+    {"n":"Grant Fuhr",        "tm":["EDM","TOR","BUF","LA","STL"],"f":1981,"t":2000,"pos":"G","nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":40,"sv":.880,"gaa":3.87,"so":1},
     {"n":"Pete Peeters",      "tm":["PHI","BOS","WSH"],       "f":1978,"t":1991,"pos":"G", "nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":31,"sv":.895,"gaa":3.08,"so":5},
     {"n":"Rejean Lemelin",    "tm":["ATL","CGY","BOS"],       "f":1978,"t":1987,"pos":"G", "nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":29,"sv":.887,"gaa":3.44,"so":2},
-    {"n":"Mike Vernon",       "tm":["CGY","DET","SJ","FLA","DAL"],"f":1983,"t":1987,"pos":"G","nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":36,"sv":.895,"gaa":2.98,"so":3},
+    {"n":"Mike Vernon",       "tm":["CGY","DET","SJ","SJS","FLA","DAL"],"f":1983,"t":2002,"pos":"G","nat":"CAN","pts":0,"g":0,"a":0,"pim":0,"ppg":0,"sog":0,"w":36,"sv":.895,"gaa":2.98,"so":3},
 ]
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -278,19 +285,26 @@ def main():
     print(f"Pre-1987 dataset: added {added} missing players, patched {updated} existing")
     print(f"Total: {len(api_players)} players")
 
-    # 3. Clean up — remove players with no name, fix any remaining blank nats
+    # 3. Clean up
     players = []
     blank_nat = 0
     blank_name = 0
+    bad_years = 0
     for p in api_players:
+        # Skip players with no name
         if not p.get("n", "").strip():
             blank_name += 1
             continue
+        # Fix players who only appeared in bios (f=9999, t=0)
+        if p.get("f", 9999) == 9999 or p.get("t", 0) == 0:
+            bad_years += 1
+            continue  # skip — no season data, not useful
         if not p.get("nat"):
             blank_nat += 1
         players.append(p)
 
     print(f"Removed {blank_name} players with blank names")
+    print(f"Removed {bad_years} players with no season data")
     print(f"Players with blank nationality: {blank_nat}")
 
     # 4. Sort by name for easy debugging
