@@ -280,7 +280,7 @@ function fitsRow(p,row) {
 }
 
 // ─── Cache ─────────────────────────────────────────────────────────────────────
-const CK="nhl_statpad_v5",CH=24;
+const CK="nhl_statpad_v6",CH=24;
 function getCached(){try{const r=localStorage.getItem(CK);if(!r)return null;const{ts,data}=JSON.parse(r);if(Date.now()-ts<CH*3600000)return data;}catch(e){}return null;}
 function setCache(d){try{localStorage.setItem(CK,JSON.stringify({ts:Date.now(),data:d}));}catch(e){}}
 
