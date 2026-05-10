@@ -237,7 +237,8 @@ const CUPS = {2024:"FLA",2023:"VGK",2022:"COL",2021:"TB",2020:"TB",2019:"STL",20
 function playerWonCup(p) {
   for (const [yr,winner] of Object.entries(CUPS)) {
     const y=parseInt(yr);
-    if (y>=p.f && y<=p.t && p.tm.includes(normTeam(winner))) return true;
+    // Use p.t+1 buffer since p.t = last_season_start+1 and Cup is awarded end of season
+    if (y>=p.f && y<=p.t+1 && p.tm.includes(normTeam(winner))) return true;
   }
   return false;
 }
