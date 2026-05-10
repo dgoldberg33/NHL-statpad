@@ -106,6 +106,7 @@ def fetch_nhl_api(is_goalie):
 
             if pid not in by_id:
                 by_id[pid] = {
+                    "id": pid,
                     "n": name, "tm": list(teams),
                     "f": yr, "t": yr + 1,
                     "pos": pos, "nat": nat,
@@ -115,6 +116,12 @@ def fetch_nhl_api(is_goalie):
                 }
             else:
                 p = by_id[pid]
+                # Always update name/nat if current value is blank
+                if name and not p["n"]:
+                    p["n"] = name
+                if nat and not p["nat"]:
+                    p["nat"] = nat
+                # Merge all teams across all seasons
                 for t in teams:
                     if t and t not in p["tm"]:
                         p["tm"].append(t)
@@ -232,8 +239,10 @@ def main():
 
     print(f"\nNHL API total: {len(api_players)} players")
 
-    # 2. Merge pre-1987 historical players
-    # Build name lookup from API players
+    # 2. Merge/add pre-1987 historical players
+    # The NHL API only goes back to ~1987-88 so pre-1987 legends need to be
+    # added from our curated dataset. Some may also appear in the API with
+    # incomplete data — in that case we patch what's missing.
     api_by_name = {p["n"].lower(): p for p in api_players}
 
     added = 0
@@ -241,11 +250,12 @@ def main():
     for p in PRE_1987:
         name_key = p["n"].lower()
         if name_key in api_by_name:
-            # Merge — our curated stats override bad API data for these legends
             ep = api_by_name[name_key]
+            # Patch any missing or wrong data the API has for this player
             ep["f"]   = min(ep["f"], p["f"])
             ep["t"]   = max(ep["t"], p["t"])
-            ep["nat"] = p["nat"] or ep.get("nat", "")  # use our nat, API is often wrong
+            if p["nat"]:
+                ep["nat"] = p["nat"]  # our curated nat is more reliable
             for t in p["tm"]:
                 if t and t not in ep["tm"]:
                     ep["tm"].append(t)
@@ -257,19 +267,31 @@ def main():
                 ep["gaa"] = p["gaa"] if ep["gaa"] == 0 else min(ep["gaa"], p["gaa"])
             updated += 1
         else:
-            # Force add — these players must be in the database
+            # Not in API at all — add from our dataset
             new_p = dict(p)
-            new_p.setdefault("id", None)
+            new_p["id"] = None  # no NHL API id for pre-API players
             api_players.append(new_p)
             api_by_name[name_key] = api_players[-1]
             added += 1
-            print(f"  Force-added: {p['n']}")
+            print(f"  Added missing player: {p['n']}")
 
-    print(f"Added {added} new pre-1987 players, updated {updated} existing")
+    print(f"Pre-1987 dataset: added {added} missing players, patched {updated} existing")
     print(f"Total: {len(api_players)} players")
 
-    # 3. Clean up — remove players with no name
-    players = [p for p in api_players if p.get("n", "").strip()]
+    # 3. Clean up — remove players with no name, fix any remaining blank nats
+    players = []
+    blank_nat = 0
+    blank_name = 0
+    for p in api_players:
+        if not p.get("n", "").strip():
+            blank_name += 1
+            continue
+        if not p.get("nat"):
+            blank_nat += 1
+        players.append(p)
+
+    print(f"Removed {blank_name} players with blank names")
+    print(f"Players with blank nationality: {blank_nat}")
 
     # 4. Sort by name for easy debugging
     players.sort(key=lambda p: p["n"])
