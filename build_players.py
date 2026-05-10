@@ -283,6 +283,17 @@ def main():
             print(f"  Added missing player: {p['n']}")
 
     print(f"Pre-1987 dataset: added {added} missing players, patched {updated} existing")
+    
+    # Verify key players are present
+    all_names = {p["n"].lower() for p in api_players}
+    must_have = ["Mike Bossy","Wayne Gretzky","Nikita Kucherov","Mikhail Sergachev",
+                 "Denis Savard","Bobby Nystrom","Sidney Crosby","Connor McDavid"]
+    for name in must_have:
+        if name.lower() in all_names:
+            p = next(x for x in api_players if x["n"].lower()==name.lower())
+            print(f"  ✓ {name}: nat={p.get('nat','')}, tm={p.get('tm',[])}, f={p.get('f')}, t={p.get('t')}")
+        else:
+            print(f"  ✗ MISSING: {name}")
     print(f"Total: {len(api_players)} players")
 
     # 3. Clean up
