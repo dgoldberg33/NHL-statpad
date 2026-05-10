@@ -64,12 +64,17 @@ def fetch_nhl_api(is_goalie):
     start = 0
     page  = 100
 
+    total = None
     while True:
         url  = f"{NHL_REST}/{endpoint}/summary?cayenneExp=gameTypeId=2&limit={page}&start={start}"
         data = get(url)
         if not data:
             print(f"  Failed at start={start}, stopping")
             break
+
+        if total is None:
+            total = data.get("total", 99999)
+            print(f"  API reports {total} total {label}")
 
         rows = data.get("data", [])
         if not rows:
@@ -131,10 +136,10 @@ def fetch_nhl_api(is_goalie):
         print(f"  Fetched {count} unique {label} so far (page start={start})")
         sys.stdout.flush()
 
-        if len(rows) < page:
-            break
         start += page
-        time.sleep(0.1)  # be polite
+        if len(rows) < page or (total and start >= total):
+            break
+        time.sleep(0.05)
 
     print(f"  Done: {len(by_id)} unique {label}")
     return list(by_id.values())
@@ -232,30 +237,36 @@ def main():
     api_by_name = {p["n"].lower(): p for p in api_players}
 
     added = 0
+    updated = 0
     for p in PRE_1987:
         name_key = p["n"].lower()
         if name_key in api_by_name:
-            # Player exists in API — extend their year range and merge teams
+            # Player exists in API — extend year range, merge teams, take best stats
             ep = api_by_name[name_key]
             ep["f"] = min(ep["f"], p["f"])
             ep["t"] = max(ep["t"], p["t"])
             for t in p["tm"]:
                 if t and t not in ep["tm"]:
                     ep["tm"].append(t)
-            # Keep best stats
+            # Always use pre-1987 stats if they're better
+            # (API stats for pre-1987 players are often wrong/incomplete)
             for stat in ["pts","g","a","pim","ppg","sog","w","so"]:
                 ep[stat] = max(ep[stat], p[stat])
             if p["sv"] > 0:
                 ep["sv"] = max(ep["sv"], p["sv"])
             if p["gaa"] > 0:
                 ep["gaa"] = p["gaa"] if ep["gaa"] == 0 else min(ep["gaa"], p["gaa"])
+            # Fix nationality if API has it blank
+            if not ep.get("nat") and p.get("nat"):
+                ep["nat"] = p["nat"]
+            updated += 1
         else:
-            # Add as new player
-            api_players.append(p)
-            api_by_name[name_key] = p
+            # Not in API at all — add directly
+            api_players.append(dict(p))
+            api_by_name[name_key] = api_players[-1]
             added += 1
 
-    print(f"Added {added} pre-1987 historical players")
+    print(f"Added {added} new pre-1987 players, updated {updated} existing")
     print(f"Total: {len(api_players)} players")
 
     # 3. Clean up — remove players with no name
